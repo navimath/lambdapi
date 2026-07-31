@@ -139,7 +139,21 @@ let tvs_map : (int StrMap.t ref) = ref StrMap.empty
 
 let set_tvs_map (fname:string): unit =
   let ic = open_in_bin fname in
-  tvs_map := StrMap.add "el" 1 (input_value ic);
+    let builtins = List.to_seq
+      [
+        ("el",1);
+        ("=",1);
+        ("∃₁",1);
+        ("∀",1);
+        ("fun_ext",2);
+        ("REFL",1);
+        ("MK_COMB",2);
+        ("TRANS",1);
+        ("SYM",1);
+        ("∃",1);
+      ]
+    in
+  tvs_map := StrMap.add_seq builtins (input_value ic);
   close_in ic
 
 (** Basic printing functions. We use Printf for efficiency reasons. *)

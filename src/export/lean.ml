@@ -30,6 +30,10 @@ let typ_arity h =
       end
   | _ -> 0
 
+let nonempty_ty oc print_ty =
+  string oc "Nonempty ";
+  print_ty()
+
 (** Translation of terms. *)
 
 let rec term oc t =
@@ -114,7 +118,9 @@ and top_params oc ((ids,a,_) as x) =
       match QidMap.find_opt id.elt !encoding with
       | Some Set ->
         let nonempty oc id =
-          string oc " [Nonempty "; param_id oc id; char oc ']'
+          string oc " [";
+          nonempty_ty oc (fun () -> param_id oc id); 
+          char oc ']'
         in List.iter (nonempty oc) ids
       | _ -> ()
     end
@@ -138,60 +144,86 @@ let open_mod oc p = string oc "open "; path oc p; string oc "\n"
 
 let openings = ref []
 
-let export_types oc p_sym_nam t =
-  let rec set_to_type t =
-    begin match t with
-      | {elt=P_Iden(id,_);_} as a  ->
-          begin
-            match QidMap.find_opt id.elt !encoding with
-            | Some Set -> ({elt=P_Type;pos=a.pos},(true,1))
-            | _ -> (a,(false,0))
-          end
-      | {elt=P_Arro(u,v);_} as a ->
-          let u' = set_to_type u in
-            if fst (snd u')  then
-              let v' = set_to_type v in
-                if fst (snd v') then
-                  ({elt=P_Arro(fst u',fst v');pos=a.pos},
-                      (true, snd (snd u') + snd (snd v')))
-              else (a,(false,0))
-            else (a,(false,0))
-      | _ -> (t,(false,0))
+let export_types oc p_sym_nam ty =
+(** Replace every occurrence of Set by Type.
+     Returns:
+       - the rewritten type,
+       - whether the whole type is a type constructor,
+       - the number of Type arguments occurring in the constructor. *)
+  let rec normalize_type ty =
+    match ty with
+    | { elt = P_Iden (id, _); pos } ->
+        begin
+          match QidMap.find_opt id.elt !encoding with
+          | Some Set ->
+              ({ elt = P_Type; pos }, true, 1)
+          | _ ->
+              (ty, false, 0)
+        end
+    | { elt = P_Arro (lhs, rhs); pos } ->
+        let lhs', lhs_ok, lhs_count = normalize_type lhs in
+        if not lhs_ok then
+          (ty, false, 0)
+        else
+          let rhs', rhs_ok, rhs_count = normalize_type rhs in
+          if rhs_ok then
+            ({ elt = P_Arro (lhs', rhs'); pos },
+             true,
+             lhs_count + rhs_count)
+          else
+            (ty, false, 0)
+    | _ ->
+        (ty, false, 0)
+  in
+  (* Print the parameters of a type constructor:
+       a0 a1 ... an *)
+  let print_type_parameters n =
+    if n > 0 then begin
+      string oc "a0";
+      for i = 1 to n - 1 do
+        string oc " a";
+        string oc (string_of_int i)
+      done
     end
   in
-  let p = (set_to_type t) in
-      let t' = fst p in
-        term oc t' ;
-        if fst (snd p) then
+  (* Print the corresponding axiom of type 
+  Nonempty and add it as an instance. *)
+  let print_nonempty_instance ty arity =
+    string oc "\n@[instance]\naxiom ne_";
+    ident oc p_sym_nam;
+    match ty with
+    | { elt = P_Type; _ } ->
+        string oc " :";
+        nonempty_ty oc 
+          (fun () -> ident oc p_sym_nam)
+    | { elt = P_Arro (_, _); _ } ->
+        let n = arity - 1 in
+        if n > 0 then 
         begin
-          match t' with
-          | {elt=P_Type;_} ->
-            string oc "\n@[instance]\naxiom ne_";ident oc p_sym_nam;
-            string oc " : Nonempty " ; ident oc p_sym_nam;
-          | {elt=P_Arro(_,_);_} ->
-            string oc "\n@[instance]\naxiom ne_";ident oc p_sym_nam;
-              let n = (snd (snd p) - 1) in
-                if n > 0 then
-                  begin
-                    string oc " (a0";
-                    for i=1 to n-1 do
-                      string oc " a" ;
-                      string oc (string_of_int i)
-                    done;
-                    string oc " : Type)";
-                    string oc " : Nonempty ";
-                    char oc '(';
-                    ident oc p_sym_nam; string oc " a0";
-                    for i=1 to n-1 do
-                      string oc " a";
-                      string oc (string_of_int i)
-                    done;
-                    char oc ')';
-                  end
-                else ident oc p_sym_nam
-          | _ -> ()
-        end;
-    string oc "\n"
+          string oc " (";
+          print_type_parameters n;
+          string oc " : Type) : ";
+          nonempty_ty oc (fun () -> 
+          begin
+            string oc "(";
+            ident oc p_sym_nam;
+            string oc " ";
+            print_type_parameters n;
+            char oc ')'
+          end)
+        end
+        else begin
+          string oc " : Nonempty ";
+          ident oc p_sym_nam
+        end
+    | _ -> ()
+  in
+  let ty', is_type_constructor, arity = normalize_type ty in
+  begin
+    term oc ty';
+    if is_type_constructor then
+      print_nonempty_instance ty' arity
+  end
 
 let command oc {elt; pos} =
   begin match elt with
@@ -220,7 +252,7 @@ let command oc {elt; pos} =
             string oc " := "; term oc t; string oc "\n"
           | false, _, [], Some t ->
             string oc "axiom "; ident oc p_sym_nam; string oc " : ";
-            export_types oc p_sym_nam t
+            export_types oc p_sym_nam t ;  string oc "\n";
           | false, _, _, Some t ->
             string oc "axiom "; ident oc p_sym_nam;
             string oc " : ∀"; top_params_list oc p_sym_arg; string oc ", ";
