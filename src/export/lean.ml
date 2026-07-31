@@ -144,12 +144,17 @@ let open_mod oc p = string oc "open "; path oc p; string oc "\n"
 
 let openings = ref []
 
+(** Exports a type constructor after replacing
+all occurrences of Set with Type (0).
+In that case, it also generates the
+corresponding Nonempty instance based on its arity.
+First, it calls [normalize_type] which
+Replace every occurrence of Set by Type.
+Returns:
+  - the rewritten type,
+  - whether the whole type is a type constructor,
+  - the number of Type arguments occurring in the constructor. *)
 let export_types oc p_sym_nam ty =
-(** Replace every occurrence of Set by Type.
-     Returns:
-       - the rewritten type,
-       - whether the whole type is a type constructor,
-       - the number of Type arguments occurring in the constructor. *)
   let rec normalize_type ty =
     match ty with
     | { elt = P_Iden (id, _); pos } ->
