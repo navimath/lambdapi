@@ -119,7 +119,7 @@ and top_params oc ((ids,a,_) as x) =
       | Some Set ->
         let nonempty oc id =
           string oc " [";
-          nonempty_ty oc (fun () -> param_id oc id); 
+          nonempty_ty oc (fun () -> param_id oc id);
           char oc ']'
         in List.iter (nonempty oc) ids
       | _ -> ()
@@ -186,7 +186,7 @@ let export_types oc p_sym_nam ty =
       done
     end
   in
-  (* Print the corresponding axiom of type 
+  (* Print the corresponding axiom of type
   Nonempty and add it as an instance. *)
   let print_nonempty_instance ty arity =
     string oc "\n@[instance]\naxiom ne_";
@@ -194,16 +194,16 @@ let export_types oc p_sym_nam ty =
     match ty with
     | { elt = P_Type; _ } ->
         string oc " :";
-        nonempty_ty oc 
+        nonempty_ty oc
           (fun () -> ident oc p_sym_nam)
     | { elt = P_Arro (_, _); _ } ->
         let n = arity - 1 in
-        if n > 0 then 
+        if n > 0 then
         begin
           string oc " (";
           print_type_parameters n;
           string oc " : Type) : ";
-          nonempty_ty oc (fun () -> 
+          nonempty_ty oc (fun () ->
           begin
             string oc "(";
             ident oc p_sym_nam;
