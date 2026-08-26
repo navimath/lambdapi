@@ -34,6 +34,38 @@ let nonempty_ty oc print_ty =
   string oc "Nonempty ";
   print_ty()
 
+(** Parametrisation by a theory class.
+
+    The translation is parametrised by a Lean type class having one field per
+    symbol of the theory, so that it is independent of any alignment: a symbol
+    is translated to the field of the class bearing its name, never to an
+    expression of some target library. The class is fixed here because the
+    translation is done once, while the alignments instantiating it may
+    change. *)
+
+let theory_class = "HOLTheory"
+let class_var = "T"
+
+(** Instance of the class bound by every generated declaration. *)
+let class_param oc = string oc (" ["^class_var^" : "^theory_class^"]")
+
+(** [is_class_field id] tells whether [id] denotes a field of the class [T],
+    taking the instance [T] as its first argument when it is applied explicitly
+    (with @). All do except for the structural symbols of STT, which
+    are the builtins. *)
+let is_class_field id =
+  match
+    match QidMap.find_opt ([],id) !encoding with
+    | Some _ as b -> b
+    | None -> QidMap.find_opt (!current_mp,id) !encoding
+  with
+  (* Imp, All and Ex are printed as native Lean syntax (-> , forall, exists)
+     as soon as they are saturated, so they cannot be opaque fields of the
+     class: they are mapped to transparent definitions of the target library
+     that are definitionally equal to that syntax, and take no instance. *)
+  | Some (Set|Prop|Arr|El|Prf|Imp|All|Ex) -> false
+  | _ -> true
+
 (** Translation of terms. *)
 
 let rec term oc t =
@@ -47,13 +79,19 @@ let rec term oc t =
   | P_Wild -> char oc '_'
   | P_NLit _ -> wrn t.pos "TODO"; assert false
   | P_SLit _ -> wrn t.pos "TODO"; assert false
-  | P_Iden(qid,b) -> if b then char oc '@'; qident oc qid
+  | P_Iden(qid,b) ->
+      if b then char oc '@';
+      qident oc qid;
+      (* an explicit application of a field of the class starts with the
+         instance, whether or not other arguments follow *)
+      if b && is_class_field (snd qid.elt) then
+        (char oc ' '; string oc class_var)
   | P_Arro(u,v) -> arrow oc u v
   | P_Abst(xs,u) -> abst oc xs u
   | P_Prod(xs,u) -> prod oc xs u
   | P_LLet(x,xs,a,u,v) ->
     string oc "let "; ident oc x; params_list oc xs; typopt oc a;
-    string oc " := "; term oc u; string oc " in "; term oc v
+    string oc " := "; term oc u; string oc "; "; term oc v
   | P_Wrap u -> term oc u
   | P_Appl _ ->
       let default h ts =
@@ -247,20 +285,21 @@ let command oc {elt; pos} =
     if not (is_mapped p_sym_nam.elt) then
         begin match p_sym_def, p_sym_trm, p_sym_arg, p_sym_typ with
           | true, Some t, _, Some a when List.exists is_lem p_sym_mod ->
-            string oc "theorem "; ident oc p_sym_nam;
+            string oc "theorem "; ident oc p_sym_nam; class_param oc;
             top_params_list oc p_sym_arg; string oc " : "; term oc a;
             string oc " := by apply "; term oc t; string oc "\n"
           | true, Some t, _, _ ->
             if List.exists is_opaq p_sym_mod then string oc "opaque "
             else string oc "@[reducible]\nnoncomputable def ";
-            ident oc p_sym_nam;
+            ident oc p_sym_nam; class_param oc;
             top_params_list oc p_sym_arg; typopt oc p_sym_typ;
             string oc " := "; term oc t; string oc "\n"
           | false, _, [], Some t ->
-            string oc "axiom "; ident oc p_sym_nam; string oc " : ";
+            string oc "axiom "; ident oc p_sym_nam; class_param oc;
+            string oc " : ";
             export_types oc p_sym_nam t ;  string oc "\n";
           | false, _, _, Some t ->
-            string oc "axiom "; ident oc p_sym_nam;
+            string oc "axiom "; ident oc p_sym_nam; class_param oc;
             string oc " : ∀"; top_params_list oc p_sym_arg; string oc ", ";
             term oc t; string oc "\n"
           | _ -> wrn pos "Command not translated."
@@ -292,11 +331,20 @@ let print : string -> ast -> unit = fun file cs ->
   match handle_requires cs with
   | None -> ()
   | Some c ->
-    string oc "\nset_option linter.style.header false\n";
+    (* the linter.style.* options belong to Mathlib; a translation written in
+       the vocabulary of the class depends on the class alone *)
     List.iter (open_mod oc) (List.rev !openings);
-    string oc ("\nnamespace "^Filename.chop_extension file^"\n");
-    string oc "set_option linter.style.missingEnd false\n";
-    string oc "set_option linter.unusedVariables false\n";
-    string oc "set_option linter.style.longLine false\n\n";
+    string oc ("open "^theory_class^"\n");
+    (* the namespace must match the module path the other generated files
+       [require ... open]: its root is the one of the required class *)
+    let root =
+      match !Stt.require with
+      | Some s -> (match String.index_opt s '.' with
+                   | Some i -> String.sub s 0 i ^ "."
+                   | None -> "")
+      | None -> ""
+    in
+    string oc ("\nnamespace "^root^Filename.chop_extension file^"\n");
+    string oc "set_option linter.unusedVariables false\n\n";
     command oc c;
     commands oc cs
