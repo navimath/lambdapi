@@ -30,9 +30,12 @@ let typ_arity h =
       end
   | _ -> 0
 
-let nonempty_ty oc print_ty =
+(** [nonempty_of oc print_type] prints the class application [Nonempty a],
+    where [a] is what [print_type] prints. Every type variable of the encoding
+    carries such an instance, since a type code denotes a nonempty Lean type. *)
+let nonempty_of oc print_type =
   string oc "Nonempty ";
-  print_ty()
+  print_type()
 
 (** Parametrisation by a theory class.
 
@@ -91,7 +94,7 @@ let rec term oc t =
   | P_Prod(xs,u) -> prod oc xs u
   | P_LLet(x,xs,a,u,v) ->
     string oc "let "; ident oc x; params_list oc xs; typopt oc a;
-    string oc " := "; term oc u; string oc "; "; term oc v
+    string oc " := "; term oc u; string oc " ; "; term oc v
   | P_Wrap u -> term oc u
   | P_Appl _ ->
       let default h ts =
@@ -126,7 +129,7 @@ and arrow oc u v = paren oc u; string oc " -> "; term oc v
 and abst oc xs u =
   string oc "fun"; params_list_in_abs oc xs; string oc " => "; term oc u
 and prod oc xs u =
-  string oc "∀"; params_list_in_abs oc xs; string oc ", "; term oc u
+  string oc "∀"; params_list_in_prod oc xs; string oc ", "; term oc u
 
 and paren oc t =
   let default() = char oc '('; term oc t; char oc ')' in
@@ -148,21 +151,30 @@ and params oc ((ids,t,b) as x) =
   | false, Some _ -> char oc '('; raw_params oc x; char oc ')'
   | false, None -> param_ids oc ids
 
-and top_params oc ((ids,a,_) as x) =
-  params oc x;
+(** [is_set_params (_,a,_)] tells whether the parameters are type variables,
+    that is, are of type [Set]. Every such variable carries a [Nonempty]
+    instance, since the encoding maps a type code to a nonempty Lean type and
+    the symbols parametrised by it expect that instance. *)
+and is_set_params (_,a,_) =
   match a with
   | Some{elt=P_Iden(id,_);_} ->
-    begin
-      match QidMap.find_opt id.elt !encoding with
-      | Some Set ->
-        let nonempty oc id =
-          string oc " [";
-          nonempty_ty oc (fun () -> param_id oc id);
-          char oc ']'
-        in List.iter (nonempty oc) ids
-      | _ -> ()
+    begin match QidMap.find_opt id.elt !encoding with
+      | Some Set -> true
+      | _ -> false
     end
-  | _ -> ()
+  | _ -> false
+
+(** [nonempty_params oc x] prints the [Nonempty] instance binder of each type
+    variable of [x], and nothing if [x] does not bind type variables. *)
+and nonempty_params oc ((ids,_,_) as x) =
+  if is_set_params x then
+    let nonempty oc id =
+      string oc " [";
+      nonempty_of oc (fun () -> param_id oc id);
+      char oc ']'
+    in List.iter (nonempty oc) ids
+
+and top_params oc x = params oc x; nonempty_params oc x
 
 and params_list oc = List.iter (prefix " " params oc)
 
@@ -172,6 +184,16 @@ and params_list_in_abs oc l =
   match l with
   | [ids,t,false] -> char oc ' '; param_ids oc ids; typopt oc t
   | _ -> params_list oc l
+
+(* Type variables can be bound by the type of a symbol instead of by its
+   parameters (as in [symbol f : Π [a : Set], Prf …]), and they then need
+   their [Nonempty] instance here as well. The unparenthesised form of
+   [params_list_in_abs] cannot be used in that case, since the binder must be
+   closed before the instance that follows it. *)
+and params_list_in_prod oc l =
+  match l with
+  | [(_,_,false) as x] when not (is_set_params x) -> params_list_in_abs oc l
+  | _ -> top_params_list oc l
 
 and typopt oc t = Option.iter (prefix " : " term oc) t
 
@@ -238,7 +260,7 @@ Returns:
     match ty with
     | { elt = P_Type; _ } ->
         string oc " :";
-        nonempty_ty oc
+        nonempty_of oc
           (fun () -> ident oc p_sym_nam)
     | { elt = P_Arro (_, _); _ } ->
         let n = arity - 1 in
@@ -247,7 +269,7 @@ Returns:
           string oc " (";
           print_type_parameters n;
           string oc " : Type) : ";
-          nonempty_ty oc (fun () ->
+          nonempty_of oc (fun () ->
           begin
             string oc "(";
             ident oc p_sym_nam;
@@ -285,7 +307,7 @@ let command oc {elt; pos} =
     if not (is_mapped p_sym_nam.elt) then
         begin match p_sym_def, p_sym_trm, p_sym_arg, p_sym_typ with
           | true, Some t, _, Some a when List.exists is_lem p_sym_mod ->
-            string oc "theorem "; ident oc p_sym_nam; class_param oc;
+            string oc "nonrec theorem "; ident oc p_sym_nam; class_param oc;
             top_params_list oc p_sym_arg; string oc " : "; term oc a;
             string oc " := by apply "; term oc t; string oc "\n"
           | true, Some t, _, _ ->
