@@ -32,7 +32,8 @@ let typ_arity h =
 
 (** [nonempty_of oc print_type] prints the class application [Nonempty a],
     where [a] is what [print_type] prints. Every type variable of the encoding
-    carries such an instance, since a type code denotes a nonempty Lean type. *)
+    carries such an instance, since a type code denotes a nonempty Lean type.
+    *)
 let nonempty_of oc print_type =
   string oc "Nonempty ";
   print_type()
@@ -53,9 +54,9 @@ let class_var = "T"
 let class_param oc = string oc (" ["^class_var^" : "^theory_class^"]")
 
 (** [is_class_field id] tells whether [id] denotes a field of the class [T],
-    taking the instance [T] as its first argument when it is applied explicitly
-    (with @). All do except for the structural symbols of STT, which
-    are the builtins. *)
+    taking the instance [T] as its first argument when it is applied
+    explicitly (with @). All do except for the structural symbols of STT,
+    which are the builtins. *)
 let is_class_field id =
   match
     match QidMap.find_opt ([],id) !encoding with
@@ -151,7 +152,7 @@ and params oc ((ids,t,b) as x) =
   | false, Some _ -> char oc '('; raw_params oc x; char oc ')'
   | false, None -> param_ids oc ids
 
-(** [is_set_params (_,a,_)] tells whether the parameters are type variables,
+(** [is_set_params] tells whether the parameters are type variables,
     that is, are of type [Set]. Every such variable carries a [Nonempty]
     instance, since the encoding maps a type code to a nonempty Lean type and
     the symbols parametrised by it expect that instance. *)
