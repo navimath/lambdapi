@@ -142,6 +142,7 @@ let set_tvs_map (fname:string): unit =
     let builtins = List.to_seq
       [
         ("el",1);
+        ("ε",1);
         ("=",1);
         ("∃₁",1);
         ("∀",1);
@@ -161,7 +162,9 @@ let set_tvs_map (fname:string): unit =
 let out = Printf.printf
 
 let char = output_char
+let newline oc = char oc '\n'
 let string = output_string
+let int oc i = string oc (string_of_int i)
 
 let prefix pre elt oc x = string oc pre; elt oc x
 let suffix elt suf oc x = elt oc x; string oc suf
@@ -223,7 +226,7 @@ let rec qident oc {elt=((mp,id) as qid);pos} =
 (** Translation of terms. *)
 
 let stt = Stdlib.ref false
-let use_implicits = Stdlib.ref false
+let use_implicits = Stdlib.ref true
 let use_notations = Stdlib.ref false
 
 (* redefinition of p_get_args ignoring P_Wrap's. *)

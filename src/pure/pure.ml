@@ -22,6 +22,7 @@ module Command = struct
   (* TODO: Fixme not to use generic equality *)
   let equal_with_pos = (=)
   let get_pos c = Pos.(c.pos)
+  let keyword_pos = Syntax.command_keyword_pos
   let print = Util.located Pretty.command
 end
 
@@ -47,6 +48,7 @@ module Tactic = struct
   type t = Syntax.p_tactic
   let equal = Syntax.eq_p_tactic
   let get_pos t = Pos.(t.pos)
+  let keyword_pos = Syntax.tactic_keyword_pos
   let print = Util.located Pretty.tactic
 end
 
@@ -74,6 +76,16 @@ let parse_command p : (Command.t, Pos.popt * string) Result.t =
 
 (** Exception raised by [parse_text] on error. *)
 
+(** [unfinished_proof_handler cmds m s pos] adds the partially parsed
+    symbol [s] (at position [pos]) to the commands [cmds] read so far,
+    and returns them in order together with the location and error
+    message [m]. *)
+let unfinished_proof_handler cmds m s pos =
+  let cmd = Pos.{elt = Syntax.P_symbol s; pos} in
+  Stdlib.(cmds := cmd :: !cmds);
+  let loc = match m.Pos.pos with Some p -> p | _ -> assert false in
+  List.rev Stdlib.(!cmds), Some (loc, m.Pos.elt)
+
 let parse_text :
       fname:string -> string -> Command.t list * (Pos.pos * string) option =
   fun ~fname s ->
@@ -88,8 +100,10 @@ let parse_text :
     Stream.iter (fun c -> Stdlib.(cmds := c :: !cmds)) (parse_string fname s);
     List.rev Stdlib.(!cmds), None
   with
+  | LpParser.UnfinishedProof(m, s, pos) ->
+    unfinished_proof_handler cmds m s pos
   | Fatal(Some(Some(pos)), msg, err_desc) ->
-      List.rev Stdlib.(!cmds), Some(pos, msg ^ "\n" ^ err_desc)
+    List.rev Stdlib.(!cmds), Some(pos, msg ^ "\n" ^ err_desc)
   | Fatal(Some(None)     , _  , _) -> assert false
   | Fatal(None           , _  , _) -> assert false
 
@@ -106,8 +120,10 @@ let parse_file :
     Stream.iter (fun c -> Stdlib.(cmds := c :: !cmds)) (parse_file fname);
     List.rev Stdlib.(!cmds), None
   with
+  | LpParser.UnfinishedProof(m, s, pos) ->
+    unfinished_proof_handler cmds m s pos
   | Fatal(Some(Some(pos)), msg, desc) ->
-      List.rev Stdlib.(!cmds), Some(pos, msg ^ ". " ^ desc)
+    List.rev Stdlib.(!cmds), Some(pos, msg ^ ". " ^ desc)
   | Fatal(Some(None)     , _ , _ ) -> assert false
   | Fatal(None           , _ , _ ) -> assert false
 
@@ -122,6 +138,10 @@ let current_goals : proof_state -> Goal.info list =
   Print.sig_state := st;
   List.map Goal.to_info ps.proof_goals
 
+(** As explained in [src/common/error.ml], the optional optional position in
+    [Cmd_Error] is used to distinguish the errors that are independent from
+    the source code position from those where a position is expected but
+    missing. *)
 type command_result =
   | Cmd_OK    of state * string option
   | Cmd_Proof of proof_state * ProofTree.t * Pos.popt * Pos.popt
@@ -139,7 +159,7 @@ let set_initial_time : unit -> unit = fun _ ->
 let initial_state : string -> state = fun fname ->
   Console.reset_default ();
   Time.restore Stdlib.(!t0);
-  Package.apply_config fname;
+  Package.set_root_path fname;
   let mp = Library.path_of_file LpLexer.escape fname in
   Sign.loading := [mp];
   let sign = Sign.create mp in
@@ -181,6 +201,18 @@ let end_proof : proof_state -> command_result =
 
 let get_symbols : state -> Term.sym Extra.StrMap.t =
   fun (_, ss) -> ss.in_scope
+
+let find_sym : state -> Term.qident -> Term.sym option =
+  fun (_, ss) qid ->
+  try Some (Sig_state.find_sym ~prt:true ~prv:true ss (Pos.none qid))
+  with Fatal _ -> None
+
+(* [restore_time st] activates the timed state (loaded signatures, library
+   mappings, ...) captured when [st] was computed. LSP requests must call
+   this before touching timed globals like [Library.lib_mappings], otherwise
+   they would observe whichever document was opened most recently. *)
+let restore_time : state -> unit =
+  fun (t, _) -> Time.restore t
 
 (* Equality tests, important for the incremental engine *)
 

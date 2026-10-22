@@ -299,8 +299,7 @@ module CM = struct
       List.max ~cmp:Int.compare (List.map (fun r -> Term.(r.arity)) rs)
     in
     let positions =
-      if size = 0 then [] else
-      List.init (size - 1) (fun i -> {arg_path = [i]; arg_rank = 0})
+      List.init size (fun i -> {arg_path = [i]; arg_rank = 0})
     in
     { clauses = List.map r2r rs ; slot = 0 ; positions }
 
@@ -339,7 +338,7 @@ module CM = struct
         List.for_all (fun r -> Array.length r.c_lhs >= k + 1) clauses &&
         List.exists (fun r -> is_treecons r.c_lhs.(k)) clauses
       in
-      List.init ncols can_switch_on in
+      List.init (ncols + 1) can_switch_on in
     let switchable2ind i e = if e then Some(i) else None in
     Array.of_list (List.filteri_map switchable2ind switchable)
 
@@ -513,8 +512,7 @@ module CM = struct
       let l, m, r = List.destruct pos col in
       let _, _, nargs = get_args_len pat in
       let replace =
-        if nargs = 0 then [] else
-        List.init (nargs - 1) (fun i -> {m with arg_path = i :: m.arg_path})
+        List.init nargs (fun i -> {m with arg_path = i :: m.arg_path})
       in
       List.reconstruct l replace r
     in
@@ -770,11 +768,14 @@ let compile : match_strat -> CM.t -> tree = fun mstrat m ->
   in
   compile VarMap.empty m
 
-(** [update_dtree s rs] updates the decision tree of the symbol [s] by adding
-   rules [rs]. *)
-let update_dtree : sym -> rule list -> unit = fun symb rs ->
-  let rs = if rs = [] then !(symb.sym_rules) else !(symb.sym_rules) @ rs in
+(** [set_dtree s rs] resets [s.sym_dtree] with the rules [rs]. *)
+let set_dtree : sym -> rule list -> unit = fun s rs ->
   let cm = lazy (CM.of_rules rs) in
-  let tree = lazy (compile symb.sym_mstrat (Lazy.force cm)) in
+  let tree = lazy (compile s.sym_mstrat (Lazy.force cm)) in
   let cap = lazy (Tree_type.tree_capacity (Lazy.force tree)) in
-  symb.sym_dtree := (cap, tree)
+  s.sym_dtree := (cap, tree)
+
+(** [update s] resets [s.sym_dtree] with [s.sym_rules]. *)
+let update (s:sym): unit = set_dtree s !(s.sym_rules)
+
+let add_and_update s rs = set_dtree s (!(s.sym_rules) @ rs)

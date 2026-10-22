@@ -53,14 +53,14 @@ test_export_lp: lambdapi
 test_export_raw_dk: lambdapi
 	@tests/export_raw_dk.sh
 
-.PHONY: tests_alt_ergo
-tests_alt_ergo: lambdapi
-	@dune exec --only-packages lambdapi -- lambdapi check tests/OK/why3*.lp
+.PHONY: test_why3
+test_why3: lambdapi
+	@dune exec lambdapi -- check tests/OK/why3*.lp
 
 .PHONY: test_libs
 test_libs: lambdapi
-	@tests/test_lib.sh https://github.com/Deducteam/lambdapi-logics.git
 	@tests/test_lib.sh https://github.com/Deducteam/lambdapi-stdlib.git
+	@tests/test_lib.sh https://github.com/Deducteam/lambdapi-logics.git
 
 #### Library tests ###########################################################
 
@@ -84,7 +84,7 @@ verine: lambdapi
 	@printf "## Compiling verine library ##\n"
 	@cd libraries && ./verine.sh
 
-.PHONY: iprover
+.PHONY: iprover # not terminating
 iprover: lambdapi
 	@printf "## Compiling iProverModulo library ##\n"
 	@cd libraries && ./iprover.sh
@@ -94,7 +94,7 @@ dklib: lambdapi
 	@printf "## Compiling the dklib library ##\n"
 	@cd libraries && ./dklib.sh
 
-.PHONY: zenon_modulo
+.PHONY: zenon_modulo # archive lost
 zenon_modulo: lambdapi
 	@printf "## Compiling the zenon library ##\n"
 	@cd libraries && ./zenon_modulo.sh

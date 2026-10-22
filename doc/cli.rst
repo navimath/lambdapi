@@ -1,0 +1,222 @@
+Command line interface
+======================
+
+The main Lambdapi executable is called ``lambdapi``, and it can be
+invoked using ``lambdapi COMMAND …``. To see the list of the supported
+commands, simply run ``lambdapi help`` or ``lambdapi --help``. To get
+the documentation of a specific command run ``lambdapi COMMAND --help``.
+It will contain the list of options that are supported by the command.
+
+The available commands are:
+
+* ``check``: check the correctness of input files.
+* ``decision-tree``: output the decision tree of a symbol as a Dot graph (see :doc:`dtrees`)
+* ``deindex``: remove constants from the search index given a prefix path
+* ``export``: translate the input file to other formats.
+* ``help``: display the main help message.
+* ``index``: create an index of symbols and rules of input files.
+* ``init``: create a new Lambdapi package (see :doc:`getting_started`).
+* ``install``: install the specified files according to package configuration.
+* ``lsp``: run the Lambdapi LSP server.
+* ``parse``: parse the input files.
+* ``search``: runs a search query against the index.
+* ``uninstall``: uninstalls the specified package.
+* ``version``: give the current version of Lambdapi.
+* ``websearch``: starts a webserver to search the library.
+
+The commands ``parse``, ``export`` and ``index`` can trigger the
+compilation of dependencies if the required object files (``.lpo``
+extension) are not present.
+
+**Input files:**
+
+If a command takes several files as argument, the files are handled
+independently in the order they are given. The program immediately
+stops on the first failure, without going to the next file (if any).
+
+The commands ``check``, ``parse``, ``export`` and ``index`` expect
+input files with either the ``.lp`` extension or the ``.dk``
+extension.  The appropriate parser is selected automatically. The
+``export`` command accept only one file as argument.
+
+Remark: checking Dedukti files depending on other files requires to
+use the option ``--lib-root .``.
+
+Remark: a Lambdapi file can depend on a Dedukti file, and a Dedukti
+file can depend on a Lambdapi file (but the Dedukti grammar does not
+accept qualified names for module paths).
+
+**Index file:**
+
+The index file of symbols and rules is the one specified by the
+``--db`` option. If no ``--db`` option is used, the index file is
+``~/.LPSearch.db`` if ``$HOME`` is defined, and ``./.LPSearch.db``
+otherwise.
+
+**Common options:**
+
+If an option other than ``--rules`` is duplicated, only the last
+occurrence is taken into account.
+
+* ``-c``, ``--gen-obj`` instructs Lambdapi to generate object files for every checked module (including dependencies). Object files have the extension ``.lpo`` and they are automatically read back when necessary if they exist and are up to date (they are regenerated otherwise).
+
+* ``--db <FILE.db>`` tells lambdapi to use ``<FILE.db>`` as index file.
+
+* ``--debug=<FLAGS>`` enables the debugging modes specified by every character of ``FLAGS``. Details on available character flags are obtained using ``--help``.
+
+* ``--lib-root <DIR>`` sets the library root, that is, the folder corresponding to the entry point of the Lambdapi package system. This is the folder under which every package is installed, and a default value is only known if the program has been installed.
+
+* ``--map-dir=<MOD>:<DIR>`` maps an arbitrary directory ``DIR`` under a module path ``MOD`` (relative to the root directory). This option is mainly useful during the development of a package (before it has been installed). However it can also be accessed using a package configuration file (``lambdapi.pkg``) at the root of the library’s source tree. More information on that is given in the section about the module system.
+
+* ``--no-sr-check`` disables subject reduction checking.
+
+* ``--timeout=<NUM>`` gives up type-checking after the given number of seconds.  Note that the timeout is reset between each file, and that the parameter of the command is expected to be a natural number.
+
+* ``--too-long=<FLOAT>`` gives a warning for each interpreted source file command taking more than the given number of seconds to be checked. The parameter ``FLOAT`` is expected to be a floating point number.
+
+* ``-v <NUM>``, ``--verbose <NUM>`` sets the verbosity level to the given natural number (the default value is 1). A value of 0 should not print anything, and the higher values print more and more information.
+
+* ``--db <FILE.db>`` tells lambdapi to search in ``<FILE.db>`` instead of ``~/.LPSearch.db``.
+
+.. _decision-tree:
+
+decision-tree
+-------------
+
+* ``--ghost`` print the decision tree of a ghost symbol. Ghost symbols are symbols used internally that cannot be used in the concrete syntax.
+
+.. _deindex:
+
+deindex
+-------
+
+* ``--path <PATH>``: indicates the prefix of symbol paths to be removed from the index.
+  That prefix is not checked for well-formedness (i.e. A.B matches A.BC).
+  For instance, `lambdapi deindex --path tests.OK.natural`` removes from the index all the symbols
+  whose path starts with `tests.OK.natural` like `tests.OK.natural.N`.
+
+.. _export:
+
+export
+------
+
+* ``-o <FMT>``, ``--output <FMT>`` instructs Lambdapi to translate the files given in argument according to ``<FMT>``:
+
+  - ``lp``: Lambdapi format
+  - ``dk``:  `Dedukti <https://github.com/Deducteam/dedukti>`__ format
+  - ``raw_dk``:  `Dedukti <https://github.com/Deducteam/dedukti>`__ format
+  - ``hrs``: `HRS <http://project-coco.uibk.ac.at/problems/hrs.php>`__ format of the confluence competition
+  - ``xtc``: `XTC <https://raw.githubusercontent.com/TermCOMP/TPDB/master/xml/xtc.xsd>`__ format of the termination competition
+  - ``raw_coq``: `Coq <https://coq.inria.fr/>`__ format
+  - ``stt_coq``: `Coq <https://coq.inria.fr/>`__ format assuming that the input file is in an encoding of simple type theory
+  - ``raw_lean``: `Lean <https://lean-lang.org/>`__ format
+  - ``stt_lean``: `Lean <https://lean-lang.org/>`__ format assuming that the input file is in an encoding of simple type theory
+
+**WARNING**: With the formats ``raw_coq``, ``stt_coq``, ``raw_lean``, ``stt_lean`` and ``raw_dk``, the translation is done just after parsing, thus before scoping and elaboration. So Lambdapi cannot translate any input file, and the output may be incomplete or fail to type-check.
+
+The format ``raw_dk`` does not accept the commands ``notation`` and ``inductive``, and proofs and tactics, which require elaboration.
+
+The formats ``raw_coq``, ``stt_coq``, ``raw_lean`` and ``stt_lean`` only accept the commands ``require``, ``open``, ``symbol`` and ``rule``, but rules are simply ignored. The encoding of simple type theory can however be defined in Coq using `STTfa.v <https://github.com/Deducteam/lambdapi/blob/master/libraries/sttfa.v>`__.
+
+For the formats ``stt_coq`` and ``stt_lean``, several other options are available:
+
+* ``--encoding <FILE.lp>`` (mandatory option) where ``<FILE.lp>`` contains the following sequence of builtin declarations:
+
+::
+
+   builtin "Set" ≔ …; // : TYPE
+   builtin "prop" ≔ …; // : Set
+   builtin "arr" ≔ …; // : Set → Set → Set
+   builtin "El" ≔ …; // : Set → TYPE
+   builtin "Prf" ≔ …; // : El prop → TYPE
+   builtin "eq" ≔ …; // : Π [a : Set], El a → El a → El prop
+   builtin "not" ≔ …; // : El prop → El prop
+   builtin "imp" ≔ …; // : El prop → El prop → El prop
+   builtin "and" ≔ …; // : El prop → El prop → El prop
+   builtin "or" ≔ …; // : El prop → El prop → El prop
+   builtin "all" ≔ …; // : Π [a : Set], (El a → El prop) → El prop
+   builtin "ex" ≔ …; // : Π [a : Set], (El a → El prop) → El prop
+
+It tells Lambdapi which symbols of the input files are used for the encoding. Example: `encoding.lp <https://github.com/Deducteam/lambdapi/blob/master/libraries/encoding.lp>`__. The first argument ``a`` of the symbols corresponding to the builtins ``"eq"``, ``"all"`` and ``"ex"`` need not be declared as implicit.
+
+In symbol declarations or definitions, parameters with no type are assumed to be of type the term associated with the builtin ``"Set"``.
+
+* ``--no-implicits`` instructs Lambdapi that the symbols of the encoding have no implicit arguments.
+
+* ``--renaming <FILE.lp>`` where ``<FILE.lp>`` contains a sequence of builtin declarations of the form
+
+::
+   
+   builtin "expr" ≔ lp_id;
+
+It instructs Lambdapi to replace any occurrence of the unqualified identifier ``lp_id`` by ``expr``, which can be any expression. Example: `renaming.lp <https://github.com/Deducteam/lambdapi/blob/master/libraries/renaming.lp>`__.
+
+* ``--requiring <MOD>`` to add ``Require Import <MOD>`` at the beginning of the output. ``<MOD>.v`` (and similarly ``<MOD>.lean``) usually needs to contain at least the following definitions:
+
+::
+
+   Definition arr (A:Type) (B:Type) := A -> B.
+   Definition imp (P Q: Prop) := P -> Q.
+   Definition all (A:Type) (P:A->Prop) := forall x:A, P x.
+
+if the symbols corresponding to the builtins ``"arr"``, ``"imp"`` and ``"all"`` occurs partially applied in the input file. Example: `coq.v <https://github.com/Deducteam/lambdapi/blob/master/libraries/coq.v>`__.
+
+* ``--mapping <FILE.lp>`` where ``<FILE.lp>`` contains a sequence of builtin declarations like for the option ``--renaming`` except that, this time, ``lp_id`` can be a qualified identifier. It has the same effect as the option ``--renaming`` plus it removes any declaration of the renamed symbols. ``coq_expr`` therefore needs to be defined in Coq standard library or in the Coq file specified with the option ``--requiring``. It is not necessary to have entries for the symbols corresponding to the builtins ``"El"`` and ``"Prf"`` declared with the option ``--encoding`` since they are erased automatically. Example: `mapping.lp <https://github.com/Deducteam/lambdapi/blob/master/libraries/mapping.lp>`__.
+
+* ``--use-notations`` instructs Lambdapi to use the usual Coq notations for the symbols corresponding to the builtins ``"eq"``, ``"not"``, ``"and"`` and ``"or"``.
+
+Examples of libraries exported to Coq:
+  - In the Lambdapi sources, see how to export the Holide Dedukti library obtained from OpenTheory in `README.md <https://github.com/Deducteam/lambdapi/blob/master/libraries/README.md>`__.
+  - See in `hol2dk <https://github.com/Deducteam/hol2dk>`__ how to export the Lambdapi library obtained from HOL-Light.
+
+* ``--arities <FILE.tvs>`` where ``<FILE.tvs>`` is a file generated by `hol2dk <https://github.com/Deducteam/hol2dk>`__ containing a map between symbol names and number of type arguments.
+
+.. _index:
+
+index
+-----
+
+* ``--add`` tells lambdapi to not erase the index before adding new symbols and rules.
+
+  For instance, to index the Matita library, you can use the following rules:
+
+::
+
+   rule cic.Term _ $x ↪ $x;
+   rule cic.lift _ _ $x ↪ $x;
+
+* ``--source <FILE>`` indicates the path to the file containing the mapping to additional sources (for instance, Rocq sources corresponding to indexed ones). These sources will also be displayed by the websearch engine when showing the results.
+
+.. _install:
+
+install/uninstall
+-----------------
+
+* ``--dry-run`` prints the system commands that should be called instead of running them.
+
+.. _lsp:
+
+lsp
+---
+
+* ``--standard-lsp`` restricts to standard LSP protocol (no extension).
+
+* ``--log-file=<FILE>`` sets the log file for the LSP server. If not given, the file ``/tmp/lambdapi_lsp_log.txt`` is used.
+
+.. _search:
+
+search/websearch
+----------------
+
+* ``--require <FILE.lp>`` requires and opens ``<FILE.lp>`` when starting the search engine. The file can be used for example to specify implicit arguments for symbols used in the queries.
+
+.. _websearch:
+
+websearch
+---------
+
+* ``--port=<N>`` specifies the port number to use (default is 8080).
+
+* ``--header <FILE.html>`` uses <FILE.html> as header of the search engine web page.
+
+* ``--url <STRING>`` tells the server to only accept requests on URLs which path is ``<STRING>``. By default, the server only accepts requests on URLs which path is empty. Use ``**`` to accept requests with any path. It is possible to express more complex constraints using the `Dream framework <https://aantron.github.io/dream/#routing>`__.
