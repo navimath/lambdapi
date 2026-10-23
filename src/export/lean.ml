@@ -263,7 +263,7 @@ let command oc {elt; pos} =
             end;
             newline oc
           | false, _, _, Some t ->
-            string oc "axiom "; ident oc p_sym_nam; class_param oc;
+            string oc "@[hol_readable holTheoryInst]\n axiom "; ident oc p_sym_nam; class_param oc;
             string oc " : ∀"; top_params_list oc p_sym_arg; string oc ", ";
             term oc t; newline oc
           | _ -> wrn pos "Command not translated."
