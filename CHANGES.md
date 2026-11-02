@@ -22,8 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Tactic `#print` to print a symbol or the current goal.
 - Export to Lean.
 - Tactic `all_hyps t` calls parameterized tactic term t on all hypotheses ignoring failing calls.
-- Extend `print` query to the following arguments: `verbose`, `debug`, `flag`, `builtin`, `prover`, `prover_timeout`.
-- add a version number to the header of the index db file to prevent crash of LP when the structure of db changes.
+- The queries `verbose`, `debug`, `flag`, `builtin`, `prover`, `prover_timeout`, `notation`, possibly preceded by `print`.
+- Version number to the header of the index db file to prevent crash of LP when the structure of db changes.
+- Support for `rewrite` targeting terms depending on enclosing bound variables.
+- Binders in selector patterns passed to `rewrite`.
+- Builtins `arr` and `funExt` required to justify `rewrite` targeting enclosing bound variables.
+- CLI command `depend` to compute file dependencies.
 
 ### Changed
 
@@ -37,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Type of `#assume` in order to generate a new symbol and use it inside a tactic term.
 - Errors occurring while a proof is in progress now report the proof state: the goals a failing tactic was applied to, the goals before and after the tactic for a subproof-count mismatch, and the remaining goals when a proof is unfinished at `end`. The state is printed after the error message, which stays unchanged. The LSP server does not attach the proof state to tactic failures since editors display it themselves.
 - Lambdapi does not use Cmdliner anymore.
+- When no argument is given to the CLI commands `install` and `uninstall`
+use the local lambdapi.pkg and lp files.
+- The init command does not create a directory anymore: lambdapi.pkg and Makefile are created in the current directory (and the directory name is used as package name).
 
 ### Fixed
 
@@ -59,6 +66,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   side, proof, etc.).
 - In Lsp mode, when navigating a proof the server answers Goals and logs even
   when the proof is broken (missing end token or syntacticly broken tactic)
+- Prevent bound variables from escaping their scope during equality-lemma
+  matching when applying the `rewrite` tactic.
 
 ## 3.0.0 (2025-07-16)
 

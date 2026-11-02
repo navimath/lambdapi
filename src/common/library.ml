@@ -7,6 +7,15 @@ open Error open Debug
 let log = Logger.make 'l' "libr" "library files"
 let log = log.pp
 
+(** Resources directory. *)
+let resources_dir =
+  match Resources.Mysites.Sites.resources with
+  | [] -> assert false
+  | x :: _ -> x
+
+(** Root path. *)
+let root_path : Path.t Stdlib.ref = Stdlib.ref []
+
 (** Representation of the mapping from module paths to files. *)
 module LibMap :
   sig
@@ -106,6 +115,11 @@ module LibMap :
 (** [lib_root] stores the result of the ["--lib-root"] flag when given. *)
 let lib_root : string option Stdlib.ref = Stdlib.ref None
 
+let get_lib_root() =
+  match Stdlib.(!lib_root) with
+  | None -> assert false
+  | Some n -> n
+
 (** [lib_mappings] stores the specified mappings of library paths. *)
 let lib_mappings : LibMap.t ref = ref LibMap.empty
 
@@ -129,16 +143,14 @@ let set_lib_root : string option -> unit = fun dir ->
   Option.iter set_prefix (Sys.getenv_opt "LAMBDAPI_LIB_ROOT");
   lib_root := Some(Filename.concat !prefix "lib/lambdapi/lib_root");
   let set_lr p =
-    try lib_root := Some(Lplib.Filename.realpath p) with
-    Invalid_argument(_) -> ()
+    try if not (Sys.is_directory p) then
+        fatal_no_pos {|"%s" is not a directory.|} p;
+      lib_root := Some(Lplib.Filename.realpath p)
+    with Invalid_argument _ | Sys_error _ ->
+      fatal_no_pos {|The file "%s" does not exist.|} p
   in
   Option.iter set_lr dir;
-  (* Verify that [dir] exists and is a directory *)
-  match !lib_root with
-  | None -> assert false (* pth is set above. *)
-  | Some(pth) ->
-    (* Register the library root as part of the module mapping. *)
-    Timed.(lib_mappings := LibMap.set_root pth !lib_mappings)
+  Timed.(lib_mappings := LibMap.set_root (get_lib_root()) !lib_mappings)
 
 (** [add_mapping (mn, fn)] adds a new mapping from the module name [mn] to
    the file name [fn] if [mn] is not already mapped and [fn] is a valid
@@ -234,14 +246,10 @@ let path_of_file : (string -> string) -> string -> Path.t =
   log "path_of_file @[<hv>\"%s\"@ = %a@]" fname Path.pp full_mp;
   full_mp
 
-(** [install_path fname] prefixes the filename [fname] by the path to the
-   library root. *)
-let install_path : string -> string = fun fname ->
-  let mp = path_of_file (fun s -> s) fname in
-  let ext = Filename.extension fname in
-  match Stdlib.(!lib_root) with
-  | None -> assert false
-  | Some(p) -> List.fold_left Filename.concat p mp ^ ext
+(** [install_path n] prefixes the filename [n] by the library root. *)
+let install_path : string -> string = fun n ->
+  let mp = path_of_file (fun s -> s) n in
+  List.fold_left Filename.concat (get_lib_root()) mp ^ Filename.extension n
 
 (** Restore library mappings and console state after running [f x]. *)
 let restore_after f x =

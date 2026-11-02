@@ -477,10 +477,14 @@ let print (lb:'token lexbuf): print =
   | BUILTIN ->
     consume_token lb;
     Builtin
+  | NOTATION ->
+    consume_token lb;
+    Notation
   | _ ->
     expected lb ""
       ([UID"";QID[];STRINGLIT"";UNIF_RULE;COERCE_RULE;VERBOSE;
-        DEBUG;FLAG;PROVER;PROVER_TIMEOUT;BUILTIN;SEMICOLON] @ proof_end_tks)
+        DEBUG;FLAG;PROVER;PROVER_TIMEOUT;BUILTIN;NOTATION;SEMICOLON]
+       @ proof_end_tks)
 
 let term_id (lb:'token lexbuf): p_term =
   if log_enabled() then log "%s" __FUNCTION__;
@@ -689,7 +693,8 @@ and command (lb:'token lexbuf) : p_command =
         (* FIXME: give sensible positions instead of Pos.none and P.appl. *)
         let equiv = P.qiden Sign.Ghost.path Unif_rule.equiv.sym_name in
         let cons = P.qiden Sign.Ghost.path Unif_rule.cons.sym_name in
-        let mk_equiv (t, u) = P.appl (P.appl equiv t) u in
+        (* Note that, by definition of P.qiden, equiv is @≡. *)
+        let mk_equiv (t, u) = P.appl (P.appl equiv (P.wrap t)) (P.wrap u) in
         let lhs = mk_equiv e in
         let es = List.rev_map mk_equiv es in
         let (en, es) = List.(hd es, tl es) in
@@ -868,6 +873,17 @@ and equation (lb:'token lexbuf): p_term * p_term =
 
 (* queries *)
 
+and query_print lb p =
+  let pos1 = current_pos lb in
+  consume_token lb;
+  begin
+    match current_token lb with
+    | SEMICOLON | ABORT | ADMITTED | END ->
+      extend_pos lb (*__FUNCTION__*) pos1 (P_query_print p)
+    | _ ->
+      expected lb "" ([SEMICOLON] @ proof_end_tks)
+  end
+
 and query_tks() = [ASSERT false;COMPUTE;DEBUG;FLAG;PRINT;PROOFTERM;PROVER;
                    PROVER_TIMEOUT;TYPE_QUERY;VERBOSE;SEARCH]
 and query (lb:'token lexbuf): p_query =
@@ -900,6 +916,7 @@ and query (lb:'token lexbuf): p_query =
         | _ ->
             expected lb "" [COLON;EQUIV]
       end
+  | COERCE_RULE -> query_print lb Coerce_rule
   | COMPUTE ->
       let pos1 = current_pos lb in
       consume_token lb;
@@ -934,6 +951,7 @@ and query (lb:'token lexbuf): p_query =
         | _ ->
           expected lb "" ([STRINGLIT"";SEMICOLON] @ proof_end_tks)
       end
+  | NOTATION -> query_print lb Notation
   | PRINT ->
       let pos1 = current_pos lb in
       consume_token lb;
@@ -981,6 +999,7 @@ and query (lb:'token lexbuf): p_query =
       let t = term lb in
       extend_pos lb (*__FUNCTION__*) pos1
         (P_query_infer(t, {strategy=NONE; steps=None}))
+  | UNIF_RULE -> query_print lb Unif_rule
   | VERBOSE ->
       let pos1 = current_pos lb in
       consume_token lb;
