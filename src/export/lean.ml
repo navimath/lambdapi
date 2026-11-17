@@ -289,30 +289,34 @@ let handle_requires cmds =
   in
   try handle_next_elt() with Stream.Failure -> None
 
-let set_option oc s =
+let unset_option oc s =
   string oc "set_option "; string oc s; string oc " false\n"
 
-let namespace : out_channel -> string -> unit = fun oc file ->
-  string oc "\nnamespace ";
-  Option.iter
-  (fun s -> string oc
-      (try (Filename.chop_extension s)^"."
-        with Invalid_argument _ -> "")) !require;
-  string oc (Filename.chop_extension file);
-  string oc "\n\n"
-
-let print : string -> p_commands -> unit = fun file cmds ->
+let print : string -> p_commands -> unit =
+  let space = Str.regexp "[ \t\n]+" in
   let oc = stdout in
-  Option.iter (fun s -> string oc ("import "^s^"\n")) !require;
+  fun file cmds ->
+  let requires =
+    match !require with
+    | None -> []
+    | Some s -> Str.split space s
+  in
+  List.iter (fun s -> string oc "import "; string oc s; newline oc) requires;
   match handle_requires cmds with
   | None -> ()
   | Some cmd ->
-    (* the linter.style.* options belong to Mathlib; a translation written in
-       the vocabulary of the class depends on the class alone *)
-    set_option oc "linter.unusedVariables";
     newline oc;
+    List.iter (unset_option oc)
+      ["linter.style.header"
+      ;"linter.style.missingEnd"
+      ;"linter.unusedVariables"
+      ;"linter.style.longLine"];
+    if !openings <> [] then newline oc;
     List.iter (open_mod oc) (List.rev !openings);
-    string oc ("open "^theory_class); newline oc;
-    namespace oc file;
+    string oc "\nnamespace ";
+    string oc (String.concat "." !Common.Library.root_path);
+    char oc '.';
+    string oc (Filename.chop_extension file);
+    string oc "\n\n";
     command oc cmd;
     commands oc cmds

@@ -183,9 +183,12 @@ module P  = struct
     List.fold_right abst idopts t
 
   let rule : p_term -> p_term -> p_rule = fun l r -> Pos.none (l,r)
+
+  let wrap t = Pos.none (P_Wrap t)
 end
 
-(** Rewrite patterns as in Coq/SSReflect. See "A Small Scale
+(** Rewrite selection forms based on Coq/SSReflect, with Lambdapi binder
+    terms allowed inside each term component. See "A Small Scale
     Reflection Extension for the Coq system", by Georges Gonthier,
     Assia Mahboubi and Enrico Tassi, INRIA Research Report 6455, 2016,
     @see <http://hal.inria.fr/inria-00258384>, section 8, p. 48. *)
@@ -231,17 +234,18 @@ type search =
  | QFilter of search * filter
 
 type print =
-  | Verbose
+  | Builtin
+  | Coerce_rule
   | Debug
   | Flag
+  | Goal
+  | Notation
   | Prover
   | Prover_timeout
-  | Goal
+  | String of string
   | Symbol of p_qident
   | Unif_rule
-  | Coerce_rule
-  | String of string
-  | Builtin
+  | Verbose
 
 (** Parser-level representation of a query command. *)
 type p_query_aux =
