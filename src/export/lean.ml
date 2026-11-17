@@ -48,37 +48,33 @@ let nonempty oc =
   List.iter (fun id ->
       string oc " ["; nonempty_of oc (fun () -> param_id oc id); char oc ']')
 
-(** Parametrisation by a theory class.
+(** Parametrisation by a class.
 
     The translation is parametrised by a Lean type class having one field per
     symbol of the theory, so that it is independent of any alignment: a symbol
-    is translated to the field of the class bearing its name, never to an
+    is translated to the field of the class with the same name, never to an
     expression of some target library. The class is fixed here because the
     translation is done once, while the alignments instantiating it may
     change. *)
 
 let theory_class = "HOLTheory"
 let class_var = "T"
+let theory_class_inst = "HolTheoryInst"
 
 (** Instance of the class bound by every generated declaration. *)
 let class_param oc = string oc (" ["^class_var^" : "^theory_class^"]")
 
 (** [is_class_field id] tells whether [id] denotes a field of the class [T],
     taking the instance [T] as its first argument when it is applied
-    explicitly (with @). All do except for the structural symbols of STT,
+    explicitly. All do except for the structural symbols of STT,
     which are the builtins. *)
-let is_class_field id =
-  match
-    match QidMap.find_opt ([],id) !encoding with
-    | Some _ as b -> b
-    | None -> QidMap.find_opt (!current_mp,id) !encoding
-  with
-  (* Imp, All and Ex are printed as native Lean syntax (-> , forall, exists)
-     as soon as they are saturated, so they cannot be opaque fields of the
-     class: they are mapped to transparent definitions of the target library
-     that are definitionally equal to that syntax, and take no instance. *)
-  | Some (Set|Prop|Arr|El|Prf|Imp|All|Ex) -> false
-  | _ -> true
+let is_class_field qid =
+    match QidMap.find_opt qid !encoding with
+    | Some (Set|Prop|Arr|El|Prf|Imp|All) -> false
+    | _ -> true
+  (* Imp and All are printed as native Lean syntax (-> , forall)
+     Their behaviour is given by rewriting rules, not axioms,
+     hence one cannot opaque the definitions since it would type check. *)
 
 (** Translation of terms. *)
 
@@ -98,7 +94,7 @@ let rec term oc t =
       qident oc qid;
       (* an explicit application of a field of the class starts with the
          instance, whether or not other arguments follow *)
-      if b && is_class_field (snd qid.elt) then
+      if b && is_class_field qid.elt then
         (char oc ' '; string oc class_var)
   | P_Arro(u,v) -> arrow oc u v
   | P_Abst(xs,u) -> abst oc xs u
@@ -126,14 +122,14 @@ let rec term oc t =
           | _, _, All, [_;{elt=P_Wrap({elt=P_Abst([_] as xs,u);_});_}]
           | _, true, All, [{elt=P_Wrap({elt=P_Abst([_] as xs,u);_});_}]
             -> prod oc xs u
-          | _, _, Ex, [_;{elt=P_Wrap({elt=P_Abst([x],u);_});_}]
+(*          | _, _, Ex, [_;{elt=P_Wrap({elt=P_Abst([x],u);_});_}]
           | _, true, Ex, [{elt=P_Wrap({elt=P_Abst([x],u);_});_}] ->
               string oc "∃ "; raw_params oc x; string oc ", "; term oc u
           | true, _, Eq, [_;u;v]
           | true, true, Eq, [u;v] -> paren oc u; string oc " = "; paren oc v
           | true, _, Or, [u;v] -> paren oc u; string oc " ∨ "; paren oc v
           | true, _, And, [u;v] ->  paren oc u; string oc " ∧ "; paren oc v
-          | true, _, Not, [u] -> string oc "¬ "; paren oc u
+          | true, _, Not, [u] -> string oc "¬ "; paren oc u *)
           | _ -> default h ts)
 
 and arrow oc u v = paren oc u; string oc " -> "; term oc v
@@ -192,15 +188,16 @@ let open_mod oc p = string oc "open "; path oc p; newline oc
 
 let openings = ref []
 
-(* [is_typ_constr t = true] iff [t] is of the form [Set -> .. -> Set]. *)
+(** [is_typ_constr t = true] iff [t] is of the form [Set -> .. -> Set]. *)
 let rec is_typ_constr {elt;_} =
   match elt with
   | P_Iden(id,_) -> is_Set id
   | P_Arro({elt=P_Iden(id,_);_},t) -> is_Set id && is_typ_constr t
   | _ -> false
 
-(* If [is_typ_constr t], then [replace_Set_by_Type t] returns [Some(u,n)] with
-   [u] a copy of [t] where each occurrence of Set has been replaced by TYPE,
+(** If [is_typ_constr t], then [replace_Set_by_Type t] returns [Some(u,n)]
+   with [u] a copy of [t] where each occurrence
+   of Set has been replaced by TYPE,
    and [n>=0] is the number of replacements - 1. Otherwise,
    [replace_Set_by_Type t = None]. *)
 let replace_Set_by_Type =
@@ -263,7 +260,8 @@ let command oc {elt; pos} =
             end;
             newline oc
           | false, _, _, Some t ->
-            string oc "@[hol_readable holTheoryInst]\n axiom "; ident oc p_sym_nam; class_param oc;
+            string oc ("@[hol_readable"^theory_class_inst^"]\n axiom ");
+            ident oc p_sym_nam; class_param oc;
             string oc " : ∀"; top_params_list oc p_sym_arg; string oc ", ";
             term oc t; newline oc
           | _ -> wrn pos "Command not translated."
